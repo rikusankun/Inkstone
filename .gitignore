@@ -1,0 +1,11 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+prisma/dev.db
+prisma/dev.db-journal
+# WorkBuddy 工作区内部记忆，不入库
+.workbuddy-ai/
