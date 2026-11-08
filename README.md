@@ -28,7 +28,7 @@ Inkstone 是一个基于 Next.js 14 (App Router) + TypeScript + Prisma + Postgre
 只需 1 元，即可获得合法的商业使用资格及商业授权证书。
 👉 请联系作者：
 
-发送邮件至：你的邮箱@xxx.com （记得替换成你的真实邮箱）
+发送邮件至：lushanjun@proton.me
 
 或在仓库提交 Issue 联系。
 
