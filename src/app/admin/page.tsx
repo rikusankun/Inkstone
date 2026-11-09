@@ -1,15 +1,23 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { createPost } from "./actions";
+import PriceToggle from "./PriceToggle";
+import DeletePostButton from "./DeletePostButton";
+import { prisma } from "@/lib/prisma";
 
 // auth() 依赖 cookie，显式声明为动态渲染
 export const dynamic = "force-dynamic";
 
 const navItems = ["仪表盘", "写文章", "文章管理"];
 
+const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+
 export default async function AdminPage() {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/");
+
+  const posts = await prisma.post.findMany({ orderBy: { createdAt: "desc" } });
 
   return (
     <div className="flex min-h-[calc(100vh-65px)] items-stretch bg-stone-100">
@@ -94,6 +102,52 @@ export default async function AdminPage() {
             </p>
           </header>
 
+          {/* 已发布文章列表 */}
+          <section className="mb-6 rounded-3xl border border-white/70 bg-white/80 p-6 shadow-sm backdrop-blur-xl sm:p-8">
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-stone-900">已发布文章</h2>
+                <p className="mt-1 text-xs text-stone-400">共 {posts.length} 篇 · 点击编辑或删除</p>
+              </div>
+            </div>
+
+            {posts.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-stone-300 bg-white/60 py-10 text-center text-sm text-stone-500">
+                还没有文章，先在下方写第一篇吧
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {posts.map((post) => (
+                  <li
+                    key={post.id}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-stone-200/70 bg-stone-50 px-5 py-4 transition hover:bg-white"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-stone-900">{post.title}</p>
+                      <p className="mt-1 text-[11px] text-stone-400">
+                        {formatDate(post.createdAt)}
+                        {post.isPremium && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                            付费
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/admin/posts/${post.id}/edit`}
+                        className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs transition hover:border-stone-900"
+                      >
+                        编辑
+                      </Link>
+                      <DeletePostButton id={post.id} title={post.title} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {/* Bento Grid：表单主卡 + 侧边提示卡 */}
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
             <section className="rounded-3xl border border-white/70 bg-white/80 p-6 shadow-sm backdrop-blur-xl sm:p-10 xl:col-span-2">
@@ -151,19 +205,8 @@ export default async function AdminPage() {
                   <p className="mt-2 text-[11px] text-stone-400">用空行分段；前两段作为免费试读内容。</p>
                 </div>
 
-                {/* 付费开关：仍是原生 checkbox，name / value 不变 */}
-                <label className="flex cursor-pointer items-center justify-between gap-6 rounded-2xl border border-stone-200/70 bg-stone-50 px-5 py-4 transition hover:bg-white focus-within:ring-4 focus-within:ring-stone-900/5">
-                  <input type="checkbox" name="isPremium" value="on" className="peer sr-only" />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-stone-900">设为付费文章</span>
-                    <span className="mt-1 block text-xs leading-5 text-stone-500">
-                      开启后前两段免费，其余内容需支付 1 元解锁
-                    </span>
-                  </span>
-                  <span className="relative h-7 w-12 shrink-0 rounded-full bg-stone-300 transition-colors duration-200 peer-checked:bg-stone-900 peer-checked:[&>span]:translate-x-5">
-                    <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200" />
-                  </span>
-                </label>
+                {/* 付费开关 + 价格：仅在勾选「付费文章」时展示价格输入框 */}
+                <PriceToggle />
 
                 <div className="flex justify-end border-t border-stone-100 pt-6">
                   <button

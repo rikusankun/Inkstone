@@ -62,6 +62,7 @@ model Post {
   excerpt   String
   content   String
   isPremium Boolean  @default(false)
+  price     Int      @default(1)
   published Boolean  @default(true)
   authorId  String?
   author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
