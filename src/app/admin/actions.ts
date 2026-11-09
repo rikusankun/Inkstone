@@ -93,3 +93,61 @@ export async function deletePost(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/admin");
 }
+
+// 兑换码字符集：去掉 I / O / 0 / 1 等易混淆字符
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomCode() {
+  let body = "";
+  for (let i = 0; i < 8; i += 1) {
+    body += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  }
+  return `INK-${body.slice(0, 4)}-${body.slice(4)}`;
+}
+
+// 批量为某篇文章生成兑换码
+export async function generateRedeemCodes(formData: FormData) {
+  const session = await auth();
+  if (session?.user?.role !== "ADMIN") redirect("/");
+
+  const postId = String(formData.get("postId") ?? "").trim();
+  const count = Math.min(50, Math.max(1, Number(formData.get("count")) || 1));
+
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { id: true, title: true, price: true },
+  });
+  if (!post) throw new Error("请选择要生成兑换码的文章");
+
+  const codes: string[] = [];
+  for (let i = 0; i < count; i += 1) {
+    let code = randomCode();
+    // 极小概率撞库，重试直到唯一
+    while (await prisma.redeemCode.findUnique({ where: { code } })) {
+      code = randomCode();
+    }
+    codes.push(code);
+  }
+
+  await prisma.redeemCode.createMany({
+    data: codes.map((code) => ({ code, postId: post.id, amount: post.price })),
+  });
+
+  revalidatePath("/admin");
+  redirect("/admin");
+}
+
+// 作废尚未使用的兑换码
+export async function revokeRedeemCode(formData: FormData) {
+  const session = await auth();
+  if (session?.user?.role !== "ADMIN") redirect("/");
+
+  const id = String(formData.get("id") ?? "").trim();
+  if (!id) return;
+
+  const code = await prisma.redeemCode.findUnique({ where: { id } });
+  if (!code || code.usedAt) return; // 已使用的码不可作废
+
+  await prisma.redeemCode.delete({ where: { id } });
+  revalidatePath("/admin");
+}

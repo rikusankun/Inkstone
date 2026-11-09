@@ -17,6 +17,8 @@ model User {
   accounts      Account[]
   sessions      Session[]
   posts         Post[]
+  redeemedCodes RedeemCode[] @relation("RedeemCodeUsedBy")
+  unlocks       Unlock[]
   createdAt     DateTime  @default(now())
 }
 
@@ -66,6 +68,38 @@ model Post {
   published Boolean  @default(true)
   authorId  String?
   author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  redeemCodes RedeemCode[]
+  unlocks     Unlock[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// 兑换码：管理员批量生成，绑定一篇文章，读者输入后换取该文永久阅读权
+model RedeemCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  postId    String
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  amount    Int       @default(0) // 兑换时记录的面额（元）
+  usedById  String?
+  usedBy    User?     @relation("RedeemCodeUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([postId])
+}
+
+// 解锁记录：用户 × 文章 的权益，unique 保证幂等
+model Unlock {
+  id        String   @id @default(cuid())
+  userId    String
+  postId    String
+  code      String? // 使用的兑换码
+  amount    Int      @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@index([postId])
 }

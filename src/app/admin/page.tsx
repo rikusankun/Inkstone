@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { createPost } from "./actions";
+import { createPost, generateRedeemCodes, revokeRedeemCode } from "./actions";
 import PriceToggle from "./PriceToggle";
 import DeletePostButton from "./DeletePostButton";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +18,18 @@ export default async function AdminPage() {
   if (session?.user?.role !== "ADMIN") redirect("/");
 
   const posts = await prisma.post.findMany({ orderBy: { createdAt: "desc" } });
+
+  // 兑换码列表（仅取最近 100 条）+ 总数
+  const codes = await prisma.redeemCode.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    include: {
+      post: { select: { title: true } },
+      usedBy: { select: { email: true } },
+    },
+  });
+  const codeCount = await prisma.redeemCode.count();
+  const premiumPosts = posts.filter((post) => post.isPremium);
 
   return (
     <div className="flex min-h-[calc(100vh-65px)] items-stretch bg-stone-100">
@@ -141,6 +153,129 @@ export default async function AdminPage() {
                         编辑
                       </Link>
                       <DeletePostButton id={post.id} title={post.title} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* 兑换码管理 */}
+          <section className="mb-6 rounded-3xl border border-white/70 bg-white/80 p-6 shadow-sm backdrop-blur-xl sm:p-8">
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-stone-900">兑换码</h2>
+                <p className="mt-1 text-xs text-stone-400">
+                  为付费文章批量生成兑换码，发给读者输入即可解锁全文
+                </p>
+              </div>
+              <span className="rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium text-stone-500">
+                共 {codeCount} 条
+              </span>
+            </div>
+
+            {/* 生成兑换码 */}
+            {premiumPosts.length === 0 ? (
+              <p className="mb-6 rounded-2xl border border-dashed border-stone-300 bg-white/60 px-5 py-6 text-center text-sm text-stone-500">
+                还没有付费文章，先发布一篇并勾选「设为付费文章」
+              </p>
+            ) : (
+              <form action={generateRedeemCodes} className="mb-6 flex flex-wrap items-end gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <label
+                    htmlFor="postId"
+                    className="mb-2 block text-xs font-medium tracking-wide text-stone-500"
+                  >
+                    绑定文章
+                  </label>
+                  <select
+                    id="postId"
+                    name="postId"
+                    required
+                    defaultValue=""
+                    className="w-full rounded-xl border border-stone-200/80 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300 focus:bg-white focus:ring-4 focus:ring-stone-900/5"
+                  >
+                    <option value="" disabled>
+                      请选择文章
+                    </option>
+                    {premiumPosts.map((post) => (
+                      <option key={post.id} value={post.id}>
+                        {post.title}（¥{post.price}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="w-28">
+                  <label
+                    htmlFor="count"
+                    className="mb-2 block text-xs font-medium tracking-wide text-stone-500"
+                  >
+                    数量
+                  </label>
+                  <input
+                    id="count"
+                    name="count"
+                    type="number"
+                    min={1}
+                    max={50}
+                    defaultValue={5}
+                    className="w-full rounded-xl border border-stone-200/80 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300 focus:bg-white focus:ring-4 focus:ring-stone-900/5"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="rounded-xl bg-stone-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-stone-700"
+                >
+                  生成兑换码
+                </button>
+              </form>
+            )}
+
+            {/* 兑换码列表 */}
+            {codes.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-stone-300 bg-white/60 py-10 text-center text-sm text-stone-500">
+                还没有兑换码，先在上面生成一批
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {codes.map((code) => (
+                  <li
+                    key={code.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200/70 bg-stone-50 px-5 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-medium tracking-widest text-stone-900">
+                        {code.code}
+                      </p>
+                      <p className="mt-1 text-[11px] text-stone-400">
+                        {code.post.title} · ¥{code.amount} · {formatDate(code.createdAt)}
+                        {code.usedBy?.email ? ` · 已由 ${code.usedBy.email} 使用` : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {code.usedAt ? (
+                        <span className="rounded-full bg-stone-200 px-2.5 py-1 text-[11px] font-medium text-stone-500">
+                          已使用
+                        </span>
+                      ) : (
+                        <>
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800">
+                            未使用
+                          </span>
+                          <form action={revokeRedeemCode}>
+                            <input type="hidden" name="id" value={code.id} />
+                            <button
+                              type="submit"
+                              className="rounded-lg border border-stone-300 px-2.5 py-1 text-[11px] text-stone-500 transition hover:border-stone-900 hover:text-stone-900"
+                            >
+                              作废
+                            </button>
+                          </form>
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}
